@@ -1,31 +1,326 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>个人简历</title>
-  <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>个人简历 · Resume Viewer</title>
+    <style>
+      :root {
+        color-scheme: light;
+      }
 
-    html, body {
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
-    }
+      * {
+        box-sizing: border-box;
+      }
 
-    #pdf-viewer {
-      width: 100%;
-      height: 100%;
-      border: none;
-    }
-  </style>
-</head>
-<body>
-  <iframe id="pdf-viewer" src="/static/resume.pdf"></iframe>
-</body>
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: 'SF Pro Display', 'PingFang SC', 'Microsoft YaHei', Arial,
+          sans-serif;
+        background: #f5f5f4;
+        color: #111827;
+      }
+
+      .page {
+        display: flex;
+        flex-direction: column;
+        min-height: 100vh;
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 16px;
+      }
+
+      header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 12px;
+        padding: 12px 20px;
+        border-radius: 16px;
+        background: white;
+        box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+      }
+
+      .title {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+
+      .title span {
+        font-size: 1.1rem;
+        font-weight: 600;
+      }
+
+      .title small {
+        font-size: 0.85rem;
+        color: #6b7280;
+      }
+
+      button {
+        border: none;
+        border-radius: 999px;
+        padding: 10px 20px;
+        font-size: 0.95rem;
+        font-weight: 600;
+        background: #111827;
+        color: #f8fafc;
+        cursor: pointer;
+        transition: transform 0.15s ease, box-shadow 0.15s ease;
+      }
+
+      button:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 8px 20px rgba(15, 23, 42, 0.15);
+      }
+
+      button:active {
+        transform: translateY(0);
+        box-shadow: none;
+      }
+
+      .status {
+        margin: 12px 0 4px 4px;
+        font-size: 0.9rem;
+        color: #4b5563;
+        min-height: 1.2rem;
+      }
+
+      .pdf-container {
+        position: relative;
+        flex: 1;
+        margin-top: 12px;
+        padding: 12px;
+        border-radius: 18px;
+        background: white;
+        box-shadow: inset 0 2px 4px rgba(15, 23, 42, 0.04),
+          0 20px 45px rgba(15, 23, 42, 0.07);
+        overflow-y: auto;
+      }
+
+      .pdf-page {
+        width: min(900px, 100%);
+        margin: 0 auto 16px;
+        border-radius: 12px;
+        box-shadow: 0 10px 25px rgba(15, 23, 42, 0.12);
+        overflow: hidden;
+        background: #fff;
+      }
+
+      .pdf-page canvas {
+        display: block;
+        width: 100%;
+        height: auto;
+      }
+
+      .loading {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        gap: 12px;
+        background: linear-gradient(
+          135deg,
+          rgba(255, 255, 255, 0.95),
+          rgba(243, 243, 243, 0.95)
+        );
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.2s ease;
+      }
+
+      .loading.visible {
+        opacity: 1;
+        pointer-events: auto;
+      }
+
+      .spinner {
+        width: 46px;
+        height: 46px;
+        border-radius: 50%;
+        border: 4px solid rgba(15, 23, 42, 0.08);
+        border-top-color: #111827;
+        animation: spin 1s linear infinite;
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      @media (max-width: 640px) {
+        .page {
+          padding: 12px;
+        }
+
+        header {
+          padding: 10px 16px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <header>
+        <div class="title">
+          <span id="language-label">中文简历 PDF</span>
+          <small>快速加载 · 清晰展示</small>
+        </div>
+        <button id="language-toggle" type="button">Switch to English</button>
+      </header>
+      <div id="status" class="status"></div>
+      <div id="pdf-container" class="pdf-container">
+        <div id="loading-state" class="loading">
+          <div class="spinner" aria-hidden="true"></div>
+          <span id="loading-text">正在加载，请稍候...</span>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.3.136/pdf.min.js"></script>
+    <script>
+      (function () {
+        const LANGUAGE_CONFIG = {
+          zh: {
+            label: '中文简历 PDF',
+            button: 'Switch to English',
+            path: '/static/resume.pdf',
+            loadingText: '正在加载，请稍候...'
+          },
+          en: {
+            label: 'English Resume PDF',
+            button: '切换至中文',
+            path: '/static/resume-en.pdf',
+            loadingText: 'Loading resume...'
+          }
+        };
+
+        const pdfjsLib = window.pdfjsLib;
+        if (!pdfjsLib) {
+          document.getElementById('status').textContent =
+            'PDF 渲染组件加载失败';
+          return;
+        }
+
+        pdfjsLib.GlobalWorkerOptions.workerSrc =
+          'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.3.136/pdf.worker.min.js';
+
+        const languageLabel = document.getElementById('language-label');
+        const languageToggle = document.getElementById('language-toggle');
+        const pdfContainer = document.getElementById('pdf-container');
+        const loadingState = document.getElementById('loading-state');
+        const loadingText = document.getElementById('loading-text');
+        const status = document.getElementById('status');
+
+        const pathName = window.location.pathname;
+        let currentLanguage = pathName.startsWith('/en') ? 'en' : 'zh';
+        let renderToken = 0;
+
+        const updateLanguageUI = () => {
+          const config = LANGUAGE_CONFIG[currentLanguage];
+          languageLabel.textContent = config.label;
+          languageToggle.textContent =
+            currentLanguage === 'zh'
+              ? LANGUAGE_CONFIG.en.button
+              : LANGUAGE_CONFIG.zh.button;
+          loadingText.textContent = config.loadingText;
+          document.documentElement.lang = currentLanguage === 'en' ? 'en' : 'zh-CN';
+          const targetPath = currentLanguage === 'en' ? '/en' : '/';
+          if (window.location.pathname !== targetPath) {
+            window.history.replaceState({}, '', targetPath);
+          }
+        };
+
+        const showLoading = () => {
+          loadingState.classList.add('visible');
+        };
+
+        const hideLoading = () => {
+          loadingState.classList.remove('visible');
+        };
+
+        const clearPages = () => {
+          pdfContainer
+            .querySelectorAll('.pdf-page')
+            .forEach((node) => node.remove());
+        };
+
+        const renderPDF = async () => {
+          const currentToken = ++renderToken;
+          const { path } = LANGUAGE_CONFIG[currentLanguage];
+          showLoading();
+          status.textContent =
+            currentLanguage === 'en' ? 'Loading English résumé…' : '加载中文简历…';
+          clearPages();
+
+          try {
+            const doc = await pdfjsLib.getDocument({ url: path }).promise;
+            if (currentToken !== renderToken) {
+              return;
+            }
+
+            status.textContent = '';
+            for (let pageNumber = 1; pageNumber <= doc.numPages; pageNumber += 1) {
+              const page = await doc.getPage(pageNumber);
+              const initialViewport = page.getViewport({ scale: 1 });
+              const containerWidth = pdfContainer.clientWidth || window.innerWidth;
+              const scale = Math.min(
+                2.4,
+                Math.max(1.2, containerWidth / initialViewport.width)
+              );
+              const viewport = page.getViewport({ scale });
+              const canvas = document.createElement('canvas');
+              canvas.height = viewport.height;
+              canvas.width = viewport.width;
+
+              const wrapper = document.createElement('div');
+              wrapper.className = 'pdf-page';
+              wrapper.appendChild(canvas);
+              pdfContainer.appendChild(wrapper);
+
+              await page.render({
+                canvasContext: canvas.getContext('2d'),
+                viewport
+              }).promise;
+
+              if (currentToken !== renderToken) {
+                break;
+              }
+            }
+
+            if (currentToken === renderToken) {
+              status.textContent =
+                currentLanguage === 'en'
+                  ? 'English résumé ready.'
+                  : '中文简历已加载。';
+            }
+          } catch (error) {
+            console.error('PDF 渲染失败:', error);
+            status.textContent =
+              currentLanguage === 'en'
+                ? 'Failed to load English résumé.'
+                : '加载中文简历失败。';
+          } finally {
+            if (currentToken === renderToken) {
+              hideLoading();
+            }
+          }
+        };
+
+        languageToggle.addEventListener('click', () => {
+          currentLanguage = currentLanguage === 'zh' ? 'en' : 'zh';
+          updateLanguageUI();
+          renderPDF();
+        });
+
+        updateLanguageUI();
+        renderPDF();
+      })();
+    </script>
+  </body>
 </html>
-
